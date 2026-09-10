@@ -4,11 +4,11 @@
   "version": "2.0.1",
   "description": "固定论文与选段的多轮精读、引用追问、阅读记录和全文导读。",
   "author": "Paper Assistant contributors",
-  "homepage_url": "https://github.com/AstralScarsMoonshadow/paper-assistant-next",
+  "homepage_url": "https://github.com/lidayunzhongjun-cell/paper-assistant-next",
   "applications": {
     "zotero": {
       "id": "paper-assistant-next@astralscarsmoonshadow",
-      "update_url": "https://raw.githubusercontent.com/AstralScarsMoonshadow/paper-assistant-next/main/update.json",
+      "update_url": "https://raw.githubusercontent.com/lidayunzhongjun-cell/paper-assistant-next/main/update.json",
       "strict_min_version": "9.0",
       "strict_max_version": "9.*"
     }

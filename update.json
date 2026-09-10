@@ -4,8 +4,8 @@
       "updates": [
         {
           "version": "2.0.1",
-          "update_link": "https://github.com/AstralScarsMoonshadow/paper-assistant-next/releases/download/v2.0.1/paper-assistant-next-2.0.1.xpi",
-          "update_hash": "sha512:d47adb507a5a142d66d13b3c2cb883fcd732e49135124fa9747787a6c13221c4ae869c507ffffdd2a843c12df7def255c4a24778f8bdbe73d908d658c66f0449",
+          "update_link": "https://github.com/lidayunzhongjun-cell/paper-assistant-next/releases/download/v2.0.1/paper-assistant-next-2.0.1.xpi",
+          "update_hash": "sha512:2d003685c3b689412922399632c32581fabed6ce749e79542112d49fe23baeee2903ffc8aa1b7b0f7b512aab5eb63274b4b6f4899c6baf784232a4409f52bfc8",
           "applications": {
             "zotero": {
               "strict_min_version": "9.0",

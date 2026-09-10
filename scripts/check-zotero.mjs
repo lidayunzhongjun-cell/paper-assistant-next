@@ -52,7 +52,7 @@ validateManifest(manifest, pkg.version);
 const feed = JSON.parse(readFileSync(path.join(root, 'update.json'), 'utf8'));
 const release = feed.addons?.[manifest.applications.zotero.id]?.updates?.find(item => item.version === pkg.version);
 assert.ok(release, 'update.json does not contain this release');
-assert.equal(release.update_link, `https://github.com/AstralScarsMoonshadow/paper-assistant-next/releases/download/v${pkg.version}/paper-assistant-next-${pkg.version}.xpi`);
+assert.equal(release.update_link, `https://github.com/lidayunzhongjun-cell/paper-assistant-next/releases/download/v${pkg.version}/paper-assistant-next-${pkg.version}.xpi`);
 const releaseHash = crypto.createHash('sha512').update(readFileSync(xpiPath)).digest('hex');
 assert.equal(release.update_hash, `sha512:${releaseHash}`, 'update.json hash does not match XPI');
 

@@ -5,14 +5,14 @@
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "description": "Zotero 9 AI 论文精读助手：全文导读、选段翻译与解释、多轮追问、术语解析和本地阅读记录。",
-  "author": "AstralScarsMoonshadow",
+  "author": "lidayunzhongjun-cell",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AstralScarsMoonshadow/paper-assistant-next.git"
+    "url": "https://github.com/lidayunzhongjun-cell/paper-assistant-next.git"
   },
-  "homepage": "https://github.com/AstralScarsMoonshadow/paper-assistant-next",
+  "homepage": "https://github.com/lidayunzhongjun-cell/paper-assistant-next",
   "bugs": {
-    "url": "https://github.com/AstralScarsMoonshadow/paper-assistant-next/issues"
+    "url": "https://github.com/lidayunzhongjun-cell/paper-assistant-next/issues"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

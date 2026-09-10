@@ -2,7 +2,7 @@
 
 面向 Zotero 9 的 AI 论文精读助手：先让模型建立全文导读，再对选中段落进行中文翻译、通俗解释、全文作用分析和术语拆解，并围绕任意回答连续追问。
 
-这是独立于 [`zotero-paper-mind`](https://github.com/AstralScarsMoonshadow/zotero-paper-mind) 的新项目。目标是减少阅读时的跳转、重复解释和上下文丢失。它使用独立插件 ID、存储目录和更新源，不覆盖旧版，可与旧版并存或随时回退。
+这是独立于 [`zotero-paper-mind`](https://github.com/lidayunzhongjun-cell/zotero-paper-mind) 的新项目。目标是减少阅读时的跳转、重复解释和上下文丢失。它使用独立插件 ID、存储目录和更新源，不覆盖旧版，可与旧版并存或随时回退。
 
 ## 核心能力
 
@@ -17,7 +17,7 @@
 
 ## 安装
 
-1. 在 [Releases](https://github.com/AstralScarsMoonshadow/paper-assistant-next/releases/latest) 下载最新的 `paper-assistant-next-*.xpi`。
+1. 在 [Releases](https://github.com/lidayunzhongjun-cell/paper-assistant-next/releases/latest) 下载最新的 `paper-assistant-next-*.xpi`。
 2. 打开 Zotero 的 **工具 → 插件**（Plugins）。
 3. 点击右上角齿轮 **Tools for all plugins → Install Plugin From File…**。
 4. 选择下载的 XPI（不要再选择有安装缺陷的 2.0.0）。
