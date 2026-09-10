@@ -1,0 +1,23 @@
+{
+  "name": "paper-assistant-next",
+  "version": "2.0.1",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "description": "Zotero 9 AI 论文精读助手：全文导读、选段翻译与解释、多轮追问、术语解析和本地阅读记录。",
+  "author": "AstralScarsMoonshadow",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AstralScarsMoonshadow/paper-assistant-next.git"
+  },
+  "homepage": "https://github.com/AstralScarsMoonshadow/paper-assistant-next",
+  "bugs": {
+    "url": "https://github.com/AstralScarsMoonshadow/paper-assistant-next/issues"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check:zotero": "node scripts/check-zotero.mjs"
+  },
+  "devDependencies": { "esbuild": "0.28.2", "fflate": "0.8.3" }
+}

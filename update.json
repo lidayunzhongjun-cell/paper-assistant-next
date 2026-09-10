@@ -1,0 +1,19 @@
+{
+  "addons": {
+    "paper-assistant-next@astralscarsmoonshadow": {
+      "updates": [
+        {
+          "version": "2.0.1",
+          "update_link": "https://github.com/AstralScarsMoonshadow/paper-assistant-next/releases/download/v2.0.1/paper-assistant-next-2.0.1.xpi",
+          "update_hash": "sha512:d47adb507a5a142d66d13b3c2cb883fcd732e49135124fa9747787a6c13221c4ae869c507ffffdd2a843c12df7def255c4a24778f8bdbe73d908d658c66f0449",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "9.0",
+              "strict_max_version": "9.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
