@@ -43,10 +43,18 @@ const files = {
   'bootstrap.js': readFileSync(path.join(root, 'addon/bootstrap.js')),
   'content/main.js': Buffer.from(bundle.outputFiles[0].contents)
 };
+const katexFonts = path.join(path.dirname(own.resolve('katex/dist/katex.min.css')), 'fonts');
+for (const name of readdirSync(katexFonts).filter(name => name.endsWith('.woff2'))) {
+  files['content/fonts/' + name] = readFileSync(path.join(katexFonts, name));
+}
+files['licenses/KaTeX-LICENSE.txt'] = readFileSync(path.join(katexFonts, '../../LICENSE'));
 const output = path.join(dist, `paper-assistant-next-${pkg.version}.xpi`);
 writeFileSync(output, zipSync(files, { level: 9 }));
 const check = unzipSync(new Uint8Array(readFileSync(output)));
 if (!check['content/main.js']) throw new Error('XPI 校验失败');
+if (Object.keys(check).filter(name => /^content\/fonts\/KaTeX_.+\.woff2$/.test(name)).length !== 20 || !check['licenses/KaTeX-LICENSE.txt']) {
+  throw new Error('KaTeX 公式字体或许可证没有完整打包。');
+}
 const readEntry = name => strFromU8(check[name]);
 validateManifest(JSON.parse(readEntry('manifest.json')), pkg.version);
 for (const name of Object.keys(check)) if (name.includes('\\')) throw new Error('XPI 路径错误');
@@ -79,3 +87,5 @@ const previewBundle = await esbuild.build({ entryPoints: [path.join(root, 'scrip
   platform: 'node', format: 'esm', write: false, loader: { '.css': 'text' } });
 const preview = await import('data:text/javascript;base64,' + Buffer.from(previewBundle.outputFiles[0].contents).toString('base64'));
 writeFileSync(path.join(dist, 'reading-workspace-preview.html'), preview.html);
+const previewFonts = path.join(dist, 'fonts'); mkdirSync(previewFonts, { recursive: true });
+for (const name of readdirSync(katexFonts).filter(name => name.endsWith('.woff2'))) copyFileSync(path.join(katexFonts, name), path.join(previewFonts, name));

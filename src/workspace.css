@@ -4,3 +4,4 @@
 @media(prefers-color-scheme:dark){:root{--bg:#181d26;--card:#222936;--ink:#e1e7f0;--muted:#a2aec0;--line:#3b4557;--accent:#9fbaff;--soft:#2b3750;--error:#ff9b9b}.primary{color:#182337}.primary:hover{color:white}}
 @media(max-width:760px){.layout{grid-template-columns:180px minmax(0,1fr)}.toolbar{padding:8px}.scroll{padding:14px}.answer{padding:12px}.composer{padding:10px}.brand{font-size:13px}}
 @media(max-width:560px){aside{display:none}.layout{grid-template-columns:1fr}header{padding:8px 12px}.toolbar .desktop{display:none}}
+.source pre{font-family:"Cambria Math","STIX Two Text",Georgia,serif}.math-block{overflow-x:auto;overflow-y:hidden;margin:14px 0;padding:10px 6px;background:var(--bg);border-radius:8px}.math-block .katex-display{margin:.35em 0;min-width:max-content}.answer .katex{font-size:1.12em}.answer p>.katex{margin:0 .08em}.katex-error{white-space:pre-wrap;color:var(--error)!important}

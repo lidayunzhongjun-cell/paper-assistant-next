@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Paper Assistant Next · 精读工作台",
-  "version": "2.2.0",
-  "description": "PDF 与 AI 精炼稿双图谱、原文核对、选段解释、术语解析和连续追问。",
+  "version": "2.2.1",
+  "description": "PDF 与 AI 精炼稿双图谱、LaTeX 公式排版、原文核对、选段解释和连续追问。",
   "author": "Paper Assistant contributors",
   "homepage_url": "https://github.com/lidayunzhongjun-cell/paper-assistant-next",
   "applications": {

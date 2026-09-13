@@ -1,5 +1,6 @@
-/* global Services, Zotero */
+/* global Services, Zotero, rootURI */
 import styles from './workspace.css';
+import katexStyles from 'katex/dist/katex.min.css';
 import { escape, answerHTML } from './render.mjs';
 import { makeThread, uid, exportMarkdown } from './core.mjs';
 import { getConfig, saveConfig, callModel, extract, pickImportedSummary } from './runtime.mjs';
@@ -14,14 +15,17 @@ export const SHELL = `<header><div><div class="brand">Paper Assistant <span clas
 <section class="workspace"><div id="settings" class="settings" hidden><strong>模型连接</strong><label>API Base URL 或完整 Chat Completions URL<input id="endpoint" placeholder="https://api.deepseek.com/v1"></label><label>模型 ID<input id="model"></label><label>API Key（本地无认证服务可留空）<input id="api-key" type="password" autocomplete="off"></label><button id="save-settings" class="primary">保存</button><p class="small">Key 存在本机 Zotero 偏好设置中（非加密保险库）。发送问题会把选段、相关原文和对话发送至配置服务；全文导读会分块发送完整提取文字并产生多次计费请求。</p></div>
 <div class="toolbar"><label>会话 <select id="thread-picker" aria-label="阅读会话"></select></label><label>图谱来源 <select id="graph-source" aria-label="图谱来源"></select></label><button id="mastered">标记读懂</button><span class="grow"></span><button id="bookmarks">只看收藏</button><button id="font">大字</button><button id="export">复制笔记</button></div>
 <div id="scroll" class="scroll"><details id="knowledge" class="source"><summary id="knowledge-title">全文精读 · 树状知识图谱</summary><div id="graph-tree"></div></details><details id="source" class="source" open><summary id="source-title">锁定原文</summary><pre id="source-text"></pre><button id="clear-paragraph-cache" hidden>清除本段缓存</button></details><div id="messages" aria-label="问答记录"></div></div>
-<div class="composer"><div class="quick"><button data-prompt="请精读这段：准确翻译，解释推理、全文作用和必要术语。">精读选段</button><button data-prompt="用一个直观的教学例子解释刚才的核心概念，并指出例子的适用边界。">举个例子</button><button data-prompt="把刚才的推导拆成逐步过程，解释每一步的依据与假设。">逐步推导</button><button data-prompt="这个结论在原文中的证据是什么？哪些是作者观点，哪些是你的推断？">核对证据</button><button data-prompt="围绕这段给我两道自测题，先不要公布答案。">自测理解</button></div><div id="quote" class="quote" hidden></div><div class="input-row"><textarea id="question" aria-label="继续追问" placeholder="继续追问；也可选中回答中的一句话，再点“引用追问”…"></textarea><button id="send" class="primary">发送</button><button id="stop" hidden>停止</button></div><div id="status" class="status" role="status" aria-live="polite">Ctrl / ⌘ + Enter 发送 · 历史记录自动保存在本机</div></div></section></div>`;
+<div class="composer"><div class="quick"><button data-prompt="请精读这段：准确翻译，解释推理、全文作用和必要术语。">精读选段</button><button data-prompt="请专门核对并复原选段中的公式和数学符号：先列出 PDF 提取文字可能破坏的上下标、希腊字母、粗体向量、运算符与括号，再用 LaTeX 完整重排公式并逐项解释。行内公式使用 \\( ... \\)，独立公式使用单独成行的 $$。无法从材料唯一确定的符号请列出歧义，不要猜。">公式复原</button><button data-prompt="用一个直观的教学例子解释刚才的核心概念，并指出例子的适用边界。">举个例子</button><button data-prompt="把刚才的推导拆成逐步过程，解释每一步的依据与假设。">逐步推导</button><button data-prompt="这个结论在原文中的证据是什么？哪些是作者观点，哪些是你的推断？">核对证据</button><button data-prompt="围绕这段给我两道自测题，先不要公布答案。">自测理解</button></div><div id="quote" class="quote" hidden></div><div class="input-row"><textarea id="question" aria-label="继续追问" placeholder="继续追问；也可选中回答中的一句话，再点“引用追问”…"></textarea><button id="send" class="primary">发送</button><button id="stop" hidden>停止</button></div><div id="status" class="status" role="status" aria-live="polite">Ctrl / ⌘ + Enter 发送 · 历史记录自动保存在本机</div></div></section></div>`;
 
 export async function openWorkspace(parent, paper, thread, store, onClose) {
   const win = Services.ww.openWindow(parent, 'about:blank', '_blank', 'chrome,dialog=no,resizable,width=1120,height=850', null);
   if (!win) throw new Error('无法打开精读工作台');
   if (win.document.readyState !== 'complete') await new Promise(resolve => win.addEventListener('load', resolve, { once: true }));
   const doc = win.document;
-  doc.open(); doc.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>精读 · ${escape(paper.title)}</title><style>${styles}</style></head><body>${SHELL}</body></html>`); doc.close();
+  const localMathStyles = katexStyles
+    .replace(/,url\(fonts\/[^)]+\.woff\) format\("woff"\),url\(fonts\/[^)]+\.ttf\) format\("truetype"\)/g, '')
+    .replace(/url\(fonts\/([^)]+)\)/g, `url("${rootURI}content/fonts/$1")`);
+  doc.open(); doc.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>精读 · ${escape(paper.title)}</title><style>${styles}\n${localMathStyles}</style></head><body>${SHELL}</body></html>`); doc.close();
   const $ = id => doc.getElementById(id);
   let active = thread, controller = null, quoted = '', bookmarkOnly = false, closed = false;
   const status = text => { if (!closed) $('status').textContent = text; };

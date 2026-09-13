@@ -68,6 +68,15 @@ test('code fences render literally and ordered lists remain ordered', () => {
   assert.match(markdown('```js\n<strong>bad</strong>\n```'), /&lt;strong&gt;/);
 });
 
+test('inline and display LaTeX render locally while code and unsafe commands stay inert', () => {
+  const inlineMath = markdown('后验为 \\(p(\\theta_i\\mid x) \\propto p(x\\mid\\theta_i)p(\\theta_i)\\)，并满足 $\\sum_i w_i=1$。');
+  assert.match(inlineMath, /class="katex"/); assert.match(inlineMath, /<math/); assert.match(inlineMath, /msub/);
+  const display = markdown('推导如下：\n$$\n\\hat{\\beta}=(X^\\top X)^{-1}X^\\top y\n$$\n其中变量保持不变。');
+  assert.match(display, /class="math-block"/); assert.match(display, /class="katex-display"/); assert.match(display, /β/);
+  const literal = markdown('`$x_i$` 与 \\href{javascript:alert(1)}{bad}');
+  assert.match(literal, /<code>\$x_i\$<\/code>/); assert.doesNotMatch(literal, /href=/); assert.doesNotMatch(literal, /<script/);
+});
+
 test('exports all conversation rounds and original selection', () => {
   const paper = { id: '1-A', title: 'Paper' }; const thread = makeThread(paper, 'Original');
   thread.messages = [{ role: 'user', content: 'Q1', status: 'done' }, { role: 'assistant', content: 'A1', starred: true, status: 'done' }];
