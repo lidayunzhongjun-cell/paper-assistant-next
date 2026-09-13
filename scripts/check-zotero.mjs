@@ -23,7 +23,8 @@ const readEntry = (entries, name) => strFromU8(entries[name]);
 
 // Read-only diagnostic: execute the Zotero-specific manifest gate from the
 // installed host, not a reimplementation. This does NOT run the full installer.
-const omniPath = process.argv[2] || path.join(process.env.ProgramFiles || 'C:/Program Files', 'Zotero/omni.ja');
+const localOnly = process.argv.includes('--local');
+const omniPath = process.argv.slice(2).find(arg => arg !== '--local') || path.join(process.env.ProgramFiles || 'C:/Program Files', 'Zotero/omni.ja');
 const omni = zipEntries(omniPath, ['modules/Extension.sys.mjs']);
 const source = readEntry(omni, 'modules/Extension.sys.mjs');
 const anchor = source.indexOf('manifest = normalized.value;');
@@ -49,12 +50,14 @@ const xpi = zipEntries(xpiPath, ['manifest.json']);
 assert.ok(xpi['manifest.json'], 'XPI integrity check failed');
 const manifest = JSON.parse(readEntry(xpi, 'manifest.json'));
 validateManifest(manifest, pkg.version);
-const feed = JSON.parse(readFileSync(path.join(root, 'update.json'), 'utf8'));
-const release = feed.addons?.[manifest.applications.zotero.id]?.updates?.find(item => item.version === pkg.version);
-assert.ok(release, 'update.json does not contain this release');
-assert.equal(release.update_link, `https://github.com/lidayunzhongjun-cell/paper-assistant-next/releases/download/v${pkg.version}/paper-assistant-next-${pkg.version}.xpi`);
-const releaseHash = crypto.createHash('sha512').update(readFileSync(xpiPath)).digest('hex');
-assert.equal(release.update_hash, `sha512:${releaseHash}`, 'update.json hash does not match XPI');
+if (!localOnly) {
+  const feed = JSON.parse(readFileSync(path.join(root, 'update.json'), 'utf8'));
+  const release = feed.addons?.[manifest.applications.zotero.id]?.updates?.find(item => item.version === pkg.version);
+  assert.ok(release, 'update.json does not contain this release (use --local for an unpublished test build)');
+  assert.equal(release.update_link, `https://github.com/lidayunzhongjun-cell/paper-assistant-next/releases/download/v${pkg.version}/paper-assistant-next-${pkg.version}.xpi`);
+  const releaseHash = crypto.createHash('sha512').update(readFileSync(xpiPath)).digest('hex');
+  assert.equal(release.update_hash, `sha512:${releaseHash}`, 'update.json hash does not match XPI');
+}
 
 const oldPath = path.join(root, 'dist/paper-assistant-next-2.0.0.xpi');
 const missingUpdate = structuredClone(manifest);
@@ -67,6 +70,6 @@ console.log(`Regression control rejected by installed Zotero gate: ${oldErrors.j
 const errors = errorsFor(manifest);
 assert.deepEqual(errors, [], 'Packaged manifest rejected by installed Zotero gate');
 console.log(`PASS: ${xpiPath}`);
-console.log('PASS: update.json release URL and SHA-512 match the packaged XPI.');
+console.log(localOnly ? 'Local test build: public update feed intentionally not changed or checked.' : 'PASS: update.json release URL and SHA-512 match the packaged XPI.');
 console.log(`Host source: ${omniPath} -> modules/Extension.sys.mjs`);
 console.log('Scope: actual Zotero-specific manifest gate only; NOT a real installation or UI acceptance test.');

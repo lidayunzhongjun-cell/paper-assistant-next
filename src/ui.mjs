@@ -1,14 +1,19 @@
 /* global Services, Zotero */
 import styles from './workspace.css';
 import { escape, answerHTML } from './render.mjs';
-import { makeThread, uid, conversationRequest, exportMarkdown } from './core.mjs';
-import { getConfig, saveConfig, callModel, extract, overview } from './runtime.mjs';
+import { makeThread, uid, exportMarkdown } from './core.mjs';
+import { getConfig, saveConfig, callModel, extract, pickImportedSummary } from './runtime.mjs';
+import { buildGraph, prepareConversation } from './graph-runtime.mjs';
+import { graphUsable, importedGraphUsable, activeGraph, graphMarkdown, location } from './graph.mjs';
+import { cacheControls, fullCachePatch, paragraphCachePatch, persistPatch } from './cache.mjs';
+import { importedSummaryUsable } from './imported-summary.mjs';
+import { SUMMARY_IMPORT_PROMPT } from './summary-prompt.mjs';
 
 export const SHELL = `<header><div><div class="brand">Paper Assistant <span class="small">NEXT / 精读工作台</span></div><div class="small">读懂一段，接上全文，追问到底。</div></div><div><button id="focus">专注</button> <button id="settings-toggle">API 设置</button></div></header>
-<div class="layout"><aside><h2>锁定的论文</h2><div id="paper-title" class="paper-title"></div><div class="small">切换 PDF 不会改变此会话的论文来源。</div><h2>阅读路径</h2><div id="sessions" class="sessions"></div><div class="sidebar-actions"><button id="new-thread">＋ 新建全文问答</button><button id="read-paper">建立全文导读</button><button id="back">回到原文</button></div></aside>
+<div class="layout"><aside><h2>锁定的论文</h2><div id="paper-title" class="paper-title"></div><div class="small">切换 PDF 不会改变此会话的论文来源。</div><h2>阅读路径</h2><div id="sessions" class="sessions"></div><div class="sidebar-actions"><button id="new-thread">＋ 新建全文问答</button><button id="clear-messages">清除当前问答记录</button><button id="read-paper">建立 PDF 全文图谱</button><button id="clear-full-cache">清除 PDF 全文缓存</button><button id="import-summary">导入 AI 精炼稿</button><button id="build-summary-graph">从精炼稿建立图谱</button><button id="copy-summary-prompt">复制精炼提示语</button><button id="remove-summary">移除精炼稿</button><div id="summary-status" class="small"></div><button id="back">回到原文</button></div></aside>
 <section class="workspace"><div id="settings" class="settings" hidden><strong>模型连接</strong><label>API Base URL 或完整 Chat Completions URL<input id="endpoint" placeholder="https://api.deepseek.com/v1"></label><label>模型 ID<input id="model"></label><label>API Key（本地无认证服务可留空）<input id="api-key" type="password" autocomplete="off"></label><button id="save-settings" class="primary">保存</button><p class="small">Key 存在本机 Zotero 偏好设置中（非加密保险库）。发送问题会把选段、相关原文和对话发送至配置服务；全文导读会分块发送完整提取文字并产生多次计费请求。</p></div>
-<div class="toolbar"><label>会话 <select id="thread-picker" aria-label="阅读会话"></select></label><button id="mastered">标记读懂</button><span class="grow"></span><button id="bookmarks">只看收藏</button><button id="font">大字</button><button id="export">复制笔记</button></div>
-<div id="scroll" class="scroll"><details id="source" class="source" open><summary>锁定原文</summary><pre id="source-text"></pre></details><div id="messages" aria-label="问答记录"></div></div>
+<div class="toolbar"><label>会话 <select id="thread-picker" aria-label="阅读会话"></select></label><label>图谱来源 <select id="graph-source" aria-label="图谱来源"></select></label><button id="mastered">标记读懂</button><span class="grow"></span><button id="bookmarks">只看收藏</button><button id="font">大字</button><button id="export">复制笔记</button></div>
+<div id="scroll" class="scroll"><details id="knowledge" class="source"><summary id="knowledge-title">全文精读 · 树状知识图谱</summary><div id="graph-tree"></div></details><details id="source" class="source" open><summary id="source-title">锁定原文</summary><pre id="source-text"></pre><button id="clear-paragraph-cache" hidden>清除本段缓存</button></details><div id="messages" aria-label="问答记录"></div></div>
 <div class="composer"><div class="quick"><button data-prompt="请精读这段：准确翻译，解释推理、全文作用和必要术语。">精读选段</button><button data-prompt="用一个直观的教学例子解释刚才的核心概念，并指出例子的适用边界。">举个例子</button><button data-prompt="把刚才的推导拆成逐步过程，解释每一步的依据与假设。">逐步推导</button><button data-prompt="这个结论在原文中的证据是什么？哪些是作者观点，哪些是你的推断？">核对证据</button><button data-prompt="围绕这段给我两道自测题，先不要公布答案。">自测理解</button></div><div id="quote" class="quote" hidden></div><div class="input-row"><textarea id="question" aria-label="继续追问" placeholder="继续追问；也可选中回答中的一句话，再点“引用追问”…"></textarea><button id="send" class="primary">发送</button><button id="stop" hidden>停止</button></div><div id="status" class="status" role="status" aria-live="polite">Ctrl / ⌘ + Enter 发送 · 历史记录自动保存在本机</div></div></section></div>`;
 
 export async function openWorkspace(parent, paper, thread, store, onClose) {
@@ -45,13 +50,75 @@ export async function openWorkspace(parent, paper, thread, store, onClose) {
     }
     $('thread-picker').value = active.id;
   };
+  let renderedGraph = null;
+  const renderGraph = () => {
+    const pdfReady = graphUsable(paper), importedReady = importedGraphUsable(paper);
+    const current = activeGraph(paper);
+    const graph = current?.graph || null, sourceText = current?.text || '', imported = current?.kind === 'imported';
+    const picker = $('graph-source'); picker.replaceChildren();
+    const choice = (value, title) => { const option = doc.createElement('option'); option.value = value; option.textContent = title; picker.append(option); };
+    if (pdfReady) choice('pdf', 'PDF 原文图谱');
+    if (importedReady) choice('imported', 'AI 精炼稿图谱');
+    if (!pdfReady && !importedReady) choice('', '尚未建立');
+    picker.value = current?.kind || ''; picker.disabled = Boolean(controller) || (!pdfReady && !importedReady);
+    $('summary-status').textContent = importedSummaryUsable(paper)
+      ? `${paper.importedSummary.name} · ${paper.importedSummary.charCount.toLocaleString()} 字符 · ${importedReady ? '图谱已建立' : '待建立图谱'}`
+      : '支持 DOCX、TXT、Markdown；按论文单独保存。';
+    $('build-summary-graph').disabled = Boolean(controller) || !importedSummaryUsable(paper);
+    $('remove-summary').disabled = Boolean(controller) || !importedSummaryUsable(paper);
+    $('read-paper').textContent = pdfReady ? '重新建立 PDF 全文图谱' : '建立 PDF 全文图谱';
+    $('knowledge-title').textContent = graph ? `${imported ? 'AI 精炼稿' : 'PDF 全文'}精读 · 树状知识图谱` : '全文精读 · 树状知识图谱';
+    if (graph && renderedGraph === graph && $('graph-tree').childNodes.length) return;
+    renderedGraph = graph;
+    const root = $('graph-tree'); root.replaceChildren();
+    if (!graph) { root.textContent = '尚未建立树状知识图谱。可直接建立 PDF 全文图谱，或导入 AI 精炼稿后建立独立图谱。'; return; }
+    const paragraph = (parent, text, className = '') => { const el = doc.createElement('p'); el.textContent = text; el.className = className; parent.append(el); return el; };
+    const branch = (parent, title) => { const d = doc.createElement('details'); const s = doc.createElement('summary'); s.textContent = title; d.append(s); parent.append(d); return d; };
+    paragraph(root, graph.boundaryNote, 'small');
+    paragraph(root, graph.narrativeInvalidated ? '部分段落缓存已清除，全文串联已失效。重新建立图谱可恢复；当前仍可使用其他段落图谱和原文问答。' : graph.narrative);
+    const copyGraph = doc.createElement('button'); copyGraph.textContent = '复制完整图谱与术语'; copyGraph.onclick = () => copy(graphMarkdown(graph)); root.append(copyGraph);
+    const label = { low: '低', medium: '中', high: '高' };
+    const showNode = (parent, id) => {
+      const p = graph.paragraphs.find(p => p.id === id);
+      const node = branch(parent, p.cacheCleared ? `${p.id} · 本段缓存已清除` : `${p.id} · 重要性${label[p.importance]} / 密度${label[p.density]} · ${p.summary.slice(0, 65)}`);
+      paragraph(node, p.cacheCleared ? '原文保留，可重新追问；重建 PDF 全文图谱可恢复本段精读缓存。' : p.summary);
+      if (!p.cacheCleared) paragraph(node, '评判依据：' + p.reason, 'small');
+      for (const q of p.keyQuotes) paragraph(node, (imported ? '精炼稿摘录（非论文原引）：' : '关键原文：') + q);
+      const relations = graph.edges.filter(e => e.type !== '包含' && (e.from === id || e.to === id));
+      for (const e of relations) paragraph(node, `${e.from} → ${e.to} [${e.type}] ${e.reason}${e.inferred ? '（模型推断）' : ''}`, 'small');
+      const original = branch(node, `查看${imported ? '精炼稿片段' : 'PDF 提取原文'} · 字符 ${p.start}–${p.end}`);
+      const selected = sourceText.slice(p.start, p.end);
+      const pre = doc.createElement('pre'); pre.textContent = selected; original.append(pre);
+      const read = doc.createElement('button'); read.textContent = '精读 / 追问这一段';
+      read.onclick = () => {
+        if (controller) { status('请先完成或停止当前请求。'); return; }
+        let t = paper.threads.find(t => t.paragraphId === id && t.selection === selected && t.sourceKind === graph.sourceKind);
+        if (!t) { t = makeThread(paper, selected); t.paragraphId = id; t.sourceKind = graph.sourceKind; t.title = location(graph, p); paper.threads.push(t); }
+        select(t); $('knowledge').open = false; $('question').focus();
+      }; node.append(read);
+    };
+    for (const c of graph.chapters) {
+      const chapter = branch(root, `${c.id} · ${c.title}`); paragraph(chapter, c.summaryInvalidated ? '章节串联因段落缓存清除而失效；其余段落仍保留。' : c.summary);
+      for (const child of c.children) {
+        if (child.kind === 'section') { const section = branch(chapter, child.title); for (const p of child.children) showNode(section, p.id); }
+        else showNode(chapter, child.id);
+      }
+    }
+    const relations = branch(root, `章节之间的关系${imported ? '（来自二手精炼材料）' : ''}`);
+    for (const e of graph.edges.filter(e => e.inferred && e.from.startsWith('c') && e.to.startsWith('c'))) paragraph(relations, `${e.from} → ${e.to} [${e.type}] ${e.reason}（模型推断）`);
+    const terms = branch(root, `独立附属术语表 · ${graph.terms.length} 项`);
+    for (const t of graph.terms) paragraph(terms, `${t.name}：${t.definition} [${t.paragraphIds.join('、')}]`);
+  };
   const render = () => {
+    renderGraph();
+    renderCacheControls();
     $('paper-title').textContent = paper.title;
-    $('source-text').textContent = active.selection || '全文会话。点击“建立全文导读”后，可围绕论文主线继续提问。';
+    $('source-title').textContent = active.sourceKind === 'imported-summary' ? '锁定的 AI 精炼稿片段（非论文原文）' : '锁定原文';
+    $('source-text').textContent = active.selection || '全文会话。可建立 PDF 全文图谱，或导入 AI 精炼稿建立独立图谱，再围绕论文主线提问。';
     $('mastered').textContent = active.mastered ? '✓ 已读懂' : '标记读懂';
     $('messages').classList.toggle('bookmarks-only', bookmarkOnly);
     $('messages').replaceChildren();
-    if (!active.messages.length) $('messages').innerHTML = `<div class="empty"><h1>${active.selection ? '从这一段开始理解' : '先抓主线，再读细节'}</h1><p>${active.selection ? '原文已锁定。点击“精读选段”，然后继续追问。' : '建立全文导读，或直接输入你对论文的问题。'}</p><p class="small">${paper.overview ? '已有全文导读，会自动用于问答。' : '尚无全文导读；回答会明确标注所用材料范围。'}</p></div>`;
+    if (!active.messages.length) $('messages').innerHTML = `<div class="empty"><h1>${active.selection ? '从这一段开始理解' : '先抓主线，再读细节'}</h1><p>${active.selection ? (active.sourceKind === 'imported-summary' ? 'AI 精炼稿片段已锁定。回答会把它作为二手材料，并尽量用 PDF 原文核对。' : '原文已锁定。点击“精读选段”，然后继续追问。') : '建立 PDF 全文图谱，或导入 AI 精炼稿后建立独立图谱。'}</p><p class="small">${activeGraph(paper) ? '已有图谱背景，会先定位相关结构再回答。' : paper.overview ? '已有旧版全文阅读背景，会自动用于问答。' : '尚无全文导读；回答会明确标注所用材料范围。'}</p></div>`;
     for (const m of active.messages) {
       const article = doc.createElement('article'); article.className = 'message' + (m.starred ? ' starred' : ''); article.dataset.message = m.id;
       const meta = doc.createElement('div'); meta.className = 'message-meta';
@@ -84,9 +151,40 @@ export async function openWorkspace(parent, paper, thread, store, onClose) {
   }
   const busy = value => {
     $('send').disabled = value; $('read-paper').disabled = value; $('new-thread').disabled = value;
+    $('import-summary').disabled = value; $('build-summary-graph').disabled = value || !importedSummaryUsable(paper);
+    $('remove-summary').disabled = value || !importedSummaryUsable(paper); $('graph-source').disabled = value || !activeGraph(paper);
     $('stop').hidden = !value; $('thread-picker').disabled = value;
     for (const button of doc.querySelectorAll('[data-prompt]')) button.disabled = value;
+    renderCacheControls();
   };
+  function renderCacheControls() {
+    const state = cacheControls(paper, active);
+    $('clear-messages').disabled = Boolean(controller) || !state.canClearMessages;
+    $('clear-full-cache').disabled = Boolean(controller) || !state.canClearFull;
+    $('clear-paragraph-cache').hidden = !state.showParagraph;
+    $('clear-paragraph-cache').disabled = Boolean(controller) || !state.canClearParagraph;
+    $('clear-paragraph-cache').title = state.paragraphHint;
+    $('clear-paragraph-cache').textContent = state.paragraphId ? `清除本段缓存（${state.paragraphId}）` : '清除本段缓存';
+  }
+  async function clearData(kind) {
+    if (controller || closed) return;
+    const state = cacheControls(paper, active);
+    if ((kind === 'full' && !state.canClearFull) || (kind === 'paragraph' && !state.canClearParagraph) || (kind === 'messages' && !state.canClearMessages)) return;
+    const prompt = kind === 'full' ? '清除当前论文的 PDF 提取文字缓存、PDF 知识图谱和术语表？PDF 文件、AI 精炼稿及其独立图谱、选段和所有问答记录会保留。'
+      : kind === 'paragraph' ? `清除 ${state.paragraphId} 的摘要、重要性评判、关键引文、关联术语和语义关系？原文、其他段落及问答会保留。依赖本段的章节与全文串联将失效。`
+      : '清除当前会话的全部问答记录（包括其中的收藏回答）？其他会话、全文和段落缓存、草稿均保留。';
+    if (!win.confirm(prompt)) return;
+    stashDraft();
+    controller = new win.AbortController(); busy(true); $('stop').hidden = true;
+    try {
+      const target = kind === 'messages' ? active : paper;
+      const patch = kind === 'full' ? fullCachePatch() : kind === 'paragraph' ? paragraphCachePatch(paper, active) : { messages: [], updated: Date.now() };
+      await persistPatch(paper, target, patch, store);
+      if (kind === 'messages') { quoted = ''; bookmarkOnly = false; $('bookmarks').textContent = '只看收藏'; }
+      status(kind === 'messages' ? '当前问答记录已清除，缓存与其他会话保留。' : kind === 'full' ? 'PDF 全文缓存已清除；AI 精炼稿、独立图谱和问答记录保留。下次提问可重新提取 PDF 原文。' : '本段缓存已清除，原文与问答保留；相关章节及全文串联已标为失效。');
+    } catch (error) { status('清除未保存，已恢复原数据：' + error.message); }
+    finally { controller = null; if (!closed) { busy(false); render(); } }
+  }
   async function send() {
     if (controller || closed) return;
     const question = $('question').value.trim(); if (!question) { $('question').focus(); return; }
@@ -98,9 +196,10 @@ export async function openWorkspace(parent, paper, thread, store, onClose) {
       // Extraction is local. A failure leaves a usable selection-only conversation, with an explicit label.
       if (!paper.rawText) { try { paper.rawText = await extract(paper); } catch (e) { status(e.message + ' 本轮仅使用选段。'); } }
       if (controller.signal.aborted) throw new Error('已停止');
-      const request = conversationRequest(paper, target, question, quote);
+      const request = await prepareConversation(win, config, paper, target, question, quote, controller.signal, status);
+      if (controller.signal.aborted) throw new Error('已停止');
       const user = { id: uid(), role: 'user', content: request.messages.at(-1).content, status: 'done', time: Date.now() };
-      answer.evidence = `${request.evidenceLabel} · ${paper.overview ? '含分块全文导读' : '无全文导读'} · ${config.model}${request.omitted ? ` · 早期 ${request.omitted} 条消息仅在本地保留，未发送给模型` : ''}`;
+      answer.evidence = `${request.evidenceLabel} · ${activeGraph(paper) ? (activeGraph(paper).kind === 'imported' ? 'AI 精炼稿图谱＋PDF 原文核对' : 'PDF 图谱＋相关原文串读') : paper.overview ? '含旧版全文导读' : '无全文导读'} · ${config.model}${request.omitted ? ` · 早期 ${request.omitted} 条消息仅在本地保留，未发送给模型` : ''}`;
       target.messages.push(user, answer); target.draft = ''; target.updated = Date.now();
       $('question').value = ''; quoted = ''; render(); $('scroll').scrollTop = $('scroll').scrollHeight;
       await persist();
@@ -132,18 +231,78 @@ export async function openWorkspace(parent, paper, thread, store, onClose) {
       const raw = await extract(paper);
       if (controller.signal.aborted) throw new Error('已停止');
       const config = getConfig();
-      const count = Math.ceil(raw.length / 12000);
-      if (!win.confirm(`将约 ${raw.length.toLocaleString()} 字符发送到 ${new URL(endpointURLForDisplay(config.endpoint)).host}，预计至少 ${count + 1} 次模型调用，可能计费。继续？`)) return;
-      paper.rawText = raw;
-      const result = await overview(win, config, paper, controller.signal, status);
-      paper.overview = result; paper.overviewModel = config.model; paper.overviewTime = Date.now();
+      if (!win.confirm(`将约 ${raw.length.toLocaleString()} 字符发送到 ${new URL(endpointURLForDisplay(config.endpoint)).host}。会依次识别章节段落、逐段精读、串联章节与全文，产生多次计费调用，首次构建较慢。后续追问会用图谱预判后读取相关原文。继续？`)) return;
+      // Build off to the side: cancellation/invalid output must not pair an old tree with new source.
+      const graph = await buildGraph(win, config, { ...paper, rawText: raw }, controller.signal, status);
+      paper.rawText = raw; paper.graph = graph; paper.activeGraphSource = 'pdf';
+      paper.overview = graph.narrative; paper.overviewModel = config.model; paper.overviewTime = Date.now();
       let full = paper.threads.find(t => !t.selection);
       if (!full) { full = makeThread(paper); paper.threads.push(full); }
-      full.messages.push({ id: uid(), role: 'user', content: '请生成全文导读。', status: 'done', time: Date.now() },
-        { id: uid(), role: 'assistant', content: result, status: 'done', time: Date.now(), evidence: `全文提取文字分块分析 · ${config.model} · 不含图表视觉理解` });
+      full.messages.push({ id: uid(), role: 'user', content: '请建立章节—小节—段落的全文知识图谱。', status: 'done', time: Date.now() },
+        { id: uid(), role: 'assistant', content: `## 全文图谱已建立\n${graph.chapters.length} 个章节，${graph.paragraphs.length} 个段落，${graph.terms.length} 项术语。可在上方树状知识图谱展开逐段精读并查看原文。\n\n## 全文串联\n${graph.narrative}`, status: 'done', time: Date.now(), evidence: `完整提取文字参与结构识别与逐段分析 · ${config.model} · 不含图表视觉理解` });
       stashDraft(); active = full; quoted = ''; $('question').value = active.draft || '';
-      await persist(); status('全文导读已保存，后续问答将引用它。');
+      await persist(); $('knowledge').open = true; status('全文图谱和独立术语已保存，后续追问将先定位图谱再读取原文。');
     } catch (error) { status(error.message); }
+    finally { controller = null; if (!closed) { busy(false); render(); } }
+  }
+  async function importSummary() {
+    if (controller || closed) return;
+    let buildNow = false;
+    controller = new win.AbortController(); busy(true);
+    try {
+      status('请选择由 ChatGPT 等 AI 生成的 DOCX、TXT 或 Markdown 精炼稿…');
+      const imported = await pickImportedSummary(win);
+      if (!imported) { status('已取消导入。'); return; }
+      if (importedSummaryUsable(paper) && !win.confirm(`当前论文已绑定“${paper.importedSummary.name}”。替换后，旧精炼稿图谱会一并移除，但 PDF 图谱和问答记录不受影响。继续？`)) {
+        status('保留了原来的 AI 精炼稿。'); return;
+      }
+      await persistPatch(paper, paper, { importedSummary: imported, importedGraph: null,
+        activeGraphSource: graphUsable(paper) ? 'pdf' : null }, store);
+      renderedGraph = null;
+      status(`已在本机导入 ${imported.name}（${imported.charCount.toLocaleString()} 字符），尚未发送给 API。`);
+      const preview = imported.text.slice(0, 700) + (imported.text.length > 700 ? '\n……（仅显示前 700 字符）' : '');
+      buildNow = win.confirm(`已在本机解析 ${imported.name}，共 ${imported.charCount.toLocaleString()} 字符，尚未发送。\n\n内容预览：\n${preview}\n\n是否现在发送给已配置的 API 并建立独立的 AI 精炼稿图谱？这会产生多次模型调用。`);
+    } catch (error) { status(error.message); }
+    finally {
+      controller = null;
+      if (!closed) { busy(false); render(); if (buildNow) void buildSummaryGraph(); }
+    }
+  }
+  async function buildSummaryGraph() {
+    if (controller || closed || !importedSummaryUsable(paper)) { if (!importedSummaryUsable(paper)) status('请先导入 DOCX、TXT 或 Markdown 精炼稿。'); return; }
+    const summary = paper.importedSummary, config = getConfig();
+    let host;
+    try { host = new URL(endpointURLForDisplay(config.endpoint)).host; }
+    catch (error) { status(error.message); return; }
+    if (!win.confirm(`将“${summary.name}”的约 ${summary.charCount.toLocaleString()} 个字符发送到 ${host}，依次识别结构、逐段梳理、串联章节并生成术语与关系。材料是外部 AI 精炼稿，图谱会明确标记为二手材料，不替代 PDF 原文证据。继续？`)) return;
+    controller = new win.AbortController(); busy(true);
+    try {
+      status('正在根据 AI 精炼稿识别章节与论证单元…');
+      const graph = await buildGraph(win, config, paper, controller.signal, status, {
+        sourceText: summary.text, sourceKind: 'imported-summary', sourceName: summary.name, validationRetries: 1
+      });
+      const now = Date.now();
+      await persistPatch(paper, paper, { importedGraph: graph, activeGraphSource: 'imported' }, store);
+      let full = paper.threads.find(t => !t.selection);
+      if (!full) { full = makeThread(paper); paper.threads.push(full); }
+      full.messages.push({ id: uid(), role: 'user', content: `请根据导入的 AI 精炼稿“${summary.name}”建立独立知识图谱。`, status: 'done', time: now },
+        { id: uid(), role: 'assistant', content: `## AI 精炼稿图谱已建立\n${graph.chapters.length} 个章节，${graph.paragraphs.length} 个论证单元，${graph.terms.length} 项术语。\n\n> 这是根据外部 AI 精炼稿生成的二手图谱，不是论文原文证据。重要结论和引文应回到 PDF 核对。\n\n## 全文串联\n${graph.narrative}`, status: 'done', time: now,
+          evidence: `外部 AI 精炼稿 ${summary.name} · ${summary.charCount.toLocaleString()} 字符 · ${config.model} · 非 PDF 原文` });
+      stashDraft(); active = full; quoted = ''; $('question').value = active.draft || '';
+      await persist(); renderedGraph = null; $('knowledge').open = true;
+      status('AI 精炼稿图谱已独立保存。后续问答会先用它定位结构，并尽量用 PDF 原文核对。');
+    } catch (error) { status(error.message); }
+    finally { controller = null; if (!closed) { busy(false); render(); } }
+  }
+  async function removeSummary() {
+    if (controller || closed || !importedSummaryUsable(paper)) return;
+    if (!win.confirm(`移除当前论文绑定的 AI 精炼稿“${paper.importedSummary.name}”及其独立图谱？PDF 图谱、PDF 文件和所有问答记录会保留。`)) return;
+    controller = new win.AbortController(); busy(true); $('stop').hidden = true;
+    try {
+      await persistPatch(paper, paper, { importedSummary: null, importedGraph: null,
+        activeGraphSource: graphUsable(paper) ? 'pdf' : null }, store);
+      renderedGraph = null; status('AI 精炼稿及其独立图谱已移除；PDF 图谱和问答记录保留。');
+    } catch (error) { status('移除失败，原数据已恢复：' + error.message); }
     finally { controller = null; if (!closed) { busy(false); render(); } }
   }
   $('send').onclick = () => void send();
@@ -154,6 +313,18 @@ export async function openWorkspace(parent, paper, thread, store, onClose) {
   $('thread-picker').onchange = () => select(paper.threads.find(t => t.id === $('thread-picker').value) || active);
   $('new-thread').onclick = () => { const t = makeThread(paper); paper.threads.push(t); select(t); saveQuietly(); };
   $('read-paper').onclick = () => void readPaper();
+  $('import-summary').onclick = () => void importSummary();
+  $('build-summary-graph').onclick = () => void buildSummaryGraph();
+  $('copy-summary-prompt').onclick = () => { Zotero.Utilities.Internal.copyTextToClipboard(SUMMARY_IMPORT_PROMPT); status('已复制 AI 精炼稿提示语，可直接粘贴到 ChatGPT 等工具。'); };
+  $('remove-summary').onclick = () => void removeSummary();
+  $('graph-source').onchange = () => {
+    if (!$('graph-source').value || controller) return;
+    paper.activeGraphSource = $('graph-source').value; renderedGraph = null; saveQuietly(); render();
+    status(`已切换到${paper.activeGraphSource === 'imported' ? ' AI 精炼稿图谱（二手材料）' : ' PDF 原文图谱'}。`);
+  };
+  $('clear-full-cache').onclick = () => void clearData('full');
+  $('clear-paragraph-cache').onclick = () => void clearData('paragraph');
+  $('clear-messages').onclick = () => void clearData('messages');
   $('back').onclick = () => { void Zotero.Reader.open(paper.attachmentID, active.pageIndex == null ? undefined : { pageIndex: active.pageIndex }).catch(e => status(e.message)); };
   $('mastered').onclick = () => { active.mastered = !active.mastered; saveQuietly(); render(); };
   $('bookmarks').onclick = () => { bookmarkOnly = !bookmarkOnly; $('bookmarks').textContent = bookmarkOnly ? '显示全部' : '只看收藏'; render(); };

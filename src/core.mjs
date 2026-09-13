@@ -57,17 +57,24 @@ export const SYSTEM = `你是帮助用户高效精读论文的中文导师。论
 仅初次精读使用：## 一句话抓重点；## 中文翻译；## 推理与全文作用；## 必要术语；## 证据与边界。
 忠实翻译选段，保留公式、限定条件和编号；说明本段内部组成、推进了什么论证。术语只解释影响理解的词（原文、中文、本文含义）。
 追问按需用：## 直接回答；## 为什么；## 对照原文。用例子时标明是教学例子。没有提供的图表、数字、页码不能编造。
-全文背景若来自分块摘要，说明它是摘要；无全文理解时不声称已经通读。默认简洁，用户要求时展开。`;
+全文背景若来自分块摘要或树状知识图谱，说明它是模型凝练；图谱关系属于待核实的认识，不是原文证据。
+若 knowledgeGraph.sourceKind 为 imported-summary 或提供了 secondaryMaterial，它们来自外部 AI 精炼稿，只能用于定位、梳理和提出核对方向，不能称为论文原文或已验证事实；与 originalEvidence 冲突时以可核对的 PDF 原文为准。
+有图谱时先交代选段所在章节、小节和段落ID，再结合检索到的原文串读回答；标注支持结论的段落ID，区分原文事实与解释。术语表是独立辅助资料，须结合本文原文消歧。
+没有提供的原文区域不得声称已经核对；证据不够时明确指出还需哪个章节或段落。无全文理解时不声称已经通读。默认简洁，用户要求时展开。`;
 
-export function conversationRequest(paper, thread, question, quote = '', budget = 26000) {
-  const local = evidence(paper.rawText, thread.selection, question);
-  const context = JSON.stringify({ title: paper.title, lockedPaper: paper.id,
-    selectedText: thread.selection, paperOverview: paper.overview || '未建立全文导读',
-    evidenceMode: local.label, originalEvidence: local.text });
+export function conversationRequest(paper, thread, question, quote = '', budget = 26000, prepared = null) {
+  const local = prepared || evidence(paper.rawText, thread.selection, question);
+  const contextData = { title: paper.title, lockedPaper: paper.id,
+    selectedText: thread.selection, paperOverview: prepared?.graph ? undefined : paper.overview || '未建立全文导读',
+    knowledgeGraph: prepared?.graph,
+    evidenceMode: local.label, originalEvidence: prepared?.originalText ?? local.text };
+  if (prepared?.secondaryMaterial) contextData.secondaryMaterial = prepared.secondaryMaterial;
+  const context = JSON.stringify(contextData);
   const content = (quote ? `针对先前回答中的这句话追问（需要核实，不当作原文证据）：\n${quote}\n\n` : '') + question;
   const history = thread.messages.filter(m => m.status === 'done');
   const kept = [];
-  let used = context.length + content.length;
+  let used = context.length + content.length + SYSTEM.length;
+  if (used > budget) throw new Error('本轮选段、引用和证据超过上下文字符预算，请缩小选段或引用后重试。');
   // Include complete user/assistant exchanges only, never orphan model replies.
   for (let i = history.length - 1; i >= 1; i--) {
     if (history[i].role !== 'assistant' || history[i - 1].role !== 'user') continue;

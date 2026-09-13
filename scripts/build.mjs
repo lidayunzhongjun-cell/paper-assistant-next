@@ -59,7 +59,7 @@ const callbacks = []; const menus = []; const logs = [];
 const popup = { append: item => menus.push(item) };
 const host = { document: { getElementById: () => popup, createXULElement: () => ({ setAttribute() {}, addEventListener() {}, remove() { menus.splice(menus.indexOf(this), 1); } }) } };
 const mocks = {
-  URL, IOUtils: {}, PathUtils: {},
+  URL, IOUtils: {}, PathUtils: {}, ChromeUtils: {},
   Zotero: { initializationPromise: Promise.resolve(), uiReadyPromise: Promise.resolve(), getMainWindows: () => [host],
     Reader: { registerEventListener: (type, handler, id) => callbacks.push({ type, handler, id }) }, debug: s => logs.push(s) },
   Services: { scriptloader: { loadSubScript: (uri, target) => {
