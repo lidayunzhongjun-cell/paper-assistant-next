@@ -66,7 +66,7 @@ export async function startup() {
     event.append({ label: text ? 'Next · 精读选段' : 'Next · 打开论文工作台',
       onCommand: () => { if (alive) void launch(host(), event.reader, text, event.params?.annotation?.position?.pageIndex ?? null); } });
   }, ID);
-  Zotero.debug('[Paper Assistant Next] started: 2.2.1');
+  Zotero.debug('[Paper Assistant Next] started: 2.3.1');
 }
 
 export async function shutdown() {

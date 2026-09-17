@@ -94,8 +94,8 @@ export function makeGraph(text, units, plans, options = {}) {
     } else if (!p.subsection) section = null;
     const node = { id: `p${graph.paragraphs.length + 1}`, chapterId: chapter.id, sectionId: section?.id || null, start, end };
     graph.paragraphs.push(node); (section || chapter).children.push({ kind: 'paragraph', id: node.id });
-    graph.edges.push({ from: section?.id || chapter.id, to: node.id, type: '包含', reason: '原文顺序中的段落' });
-    if (previous) graph.edges.push({ from: previous.id, to: node.id, type: '顺序', reason: '原文相邻段落；不代表因果关系' });
+    graph.edges.push({ from: section?.id || chapter.id, to: node.id, type: '包含', reason: imported ? '精炼稿顺序中的导航单元' : '原文顺序中的段落' });
+    if (previous) graph.edges.push({ from: previous.id, to: node.id, type: '顺序', reason: imported ? '精炼稿相邻导航单元；不代表因果关系' : '原文相邻段落；不代表因果关系' });
   }
   if (!graph.paragraphs.length || graph.paragraphs[0].start !== 0 || graph.paragraphs.at(-1).end !== text.length) throw new Error('图谱未覆盖完整提取文字。');
   return graph;

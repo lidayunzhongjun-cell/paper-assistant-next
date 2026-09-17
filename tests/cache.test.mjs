@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cacheControls, fullCachePatch, paragraphCachePatch, persistPatch } from '../src/cache.mjs';
 import { makeGraph, sourceUnits, graphUsable, graphIndex, rankParagraphs, graphContext, graphMarkdown } from '../src/graph.mjs';
-import { makeThread } from '../src/core.mjs';
+import { makeThread, planThreadDeletion } from '../src/core.mjs';
 import { PaperStore } from '../src/runtime.mjs';
 
 function fixture() {
@@ -88,6 +88,16 @@ test('failed clear persistence restores exact objects and leaves no partial dele
     await assert.rejects(persistPatch(paper, target, patch, { save: async () => { throw new Error('disk failure'); } }), /disk failure/);
     assert.deepEqual(paper, before); assert.equal(paper.graph, originalGraph); assert.equal(thread.messages, originalMessages);
   }
+});
+
+test('thread deletion is persisted atomically and restores the exact list on failure', async () => {
+  const { paper, thread } = fixture();
+  const originalThreads = paper.threads;
+  const plan = planThreadDeletion(paper, thread.id, thread.id);
+  await assert.rejects(persistPatch(paper, paper, { threads: plan.threads }, { save: async () => { throw new Error('disk failure'); } }), /disk failure/);
+  assert.equal(paper.threads, originalThreads); assert.equal(paper.threads[0], thread); assert.equal(thread.messages.length, 2);
+  await persistPatch(paper, paper, { threads: plan.threads }, { save: async () => {} });
+  assert.deepEqual(paper.threads, [plan.active]); assert.ok(!paper.threads.includes(thread));
 });
 
 test('cleared paragraph stays cleared after closing and loading from disk', async () => {

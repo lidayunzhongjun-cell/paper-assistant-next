@@ -20,6 +20,19 @@ export function makeThread(paper, selection = '', pageIndex = null) {
     created: Date.now(), updated: Date.now(), messages: [], draft: '', mastered: false };
 }
 
+export function planThreadDeletion(paper, deleteId, activeId = deleteId) {
+  const index = paper.threads.findIndex(thread => thread.id === deleteId);
+  if (index < 0) throw new Error('要删除的会话不存在。');
+  const removed = paper.threads[index];
+  const threads = paper.threads.filter(thread => thread.id !== deleteId);
+  const createdReplacement = !threads.length;
+  if (createdReplacement) threads.push(makeThread(paper));
+  const active = activeId !== deleteId
+    ? threads.find(thread => thread.id === activeId) || threads[0]
+    : threads[Math.min(index, threads.length - 1)];
+  return { threads, active, removed, createdReplacement };
+}
+
 export function chunks(text, size = 12000) {
   if (!Number.isInteger(size) || size < 100) throw new Error('分块大小不合法');
   const result = [];
@@ -69,6 +82,7 @@ export function conversationRequest(paper, thread, question, quote = '', budget 
     selectedText: thread.selection, paperOverview: prepared?.graph ? undefined : paper.overview || '未建立全文导读',
     knowledgeGraph: prepared?.graph,
     evidenceMode: local.label, originalEvidence: prepared?.originalText ?? local.text };
+  if(thread.selectionSource==='offline-ocr')contextData.selectionSource='PDF 页面图像的设备内 OCR；文字层因乱码未采用，公式和专名仍需对照页面';
   if (prepared?.secondaryMaterial) contextData.secondaryMaterial = prepared.secondaryMaterial;
   const context = JSON.stringify(contextData);
   const content = (quote ? `针对先前回答中的这句话追问（需要核实，不当作原文证据）：\n${quote}\n\n` : '') + question;

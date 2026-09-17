@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { endpointURL, chunks, makeThread, conversationRequest, evidence, exportMarkdown } from '../src/core.mjs';
+import { endpointURL, chunks, makeThread, planThreadDeletion, conversationRequest, evidence, exportMarkdown } from '../src/core.mjs';
 import { markdown, answerHTML } from '../src/render.mjs';
 import { callModel, PaperStore } from '../src/runtime.mjs';
 
@@ -82,6 +82,24 @@ test('exports all conversation rounds and original selection', () => {
   thread.messages = [{ role: 'user', content: 'Q1', status: 'done' }, { role: 'assistant', content: 'A1', starred: true, status: 'done' }];
   const output = exportMarkdown(paper, thread);
   for (const fragment of ['Original', 'Q1', 'A1', '★']) assert.ok(output.includes(fragment));
+});
+
+test('thread deletion chooses a stable neighbor and always leaves a usable session', () => {
+  const paper = { id: '1-A', title: 'Paper', threads: [] };
+  const first = makeThread(paper, 'First'); const middle = makeThread(paper, 'Middle'); const last = makeThread(paper, 'Last');
+  paper.threads.push(first, middle, last);
+  const original = paper.threads;
+  const activeDeleted = planThreadDeletion(paper, middle.id, middle.id);
+  assert.deepEqual(activeDeleted.threads, [first, last]); assert.equal(activeDeleted.active, last);
+  assert.equal(paper.threads, original); assert.deepEqual(paper.threads, [first, middle, last]);
+  const inactiveDeleted = planThreadDeletion(paper, first.id, last.id);
+  assert.equal(inactiveDeleted.active, last);
+  const onlyPaper = { id: '1-B', title: 'Only', threads: [makeThread({ id: '1-B' }, 'Only selection')] };
+  const finalDeleted = planThreadDeletion(onlyPaper, onlyPaper.threads[0].id);
+  assert.equal(finalDeleted.threads.length, 1); assert.equal(finalDeleted.active, finalDeleted.threads[0]);
+  assert.equal(finalDeleted.createdReplacement, true);
+  assert.equal(finalDeleted.active.selection, ''); assert.equal(finalDeleted.active.title, '全文导读与问答');
+  assert.throws(() => planThreadDeletion(paper, 'missing'), /不存在/);
 });
 
 test('real request payload preserves roles; empty local API key omits authorization', async () => {

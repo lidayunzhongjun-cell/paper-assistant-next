@@ -14,8 +14,8 @@ function inline(text) {
   // Code is protected before math so `$...$` inside backticks stays literal.
   value = value.replace(/`([^`]+)`/g, (_, code) => hold(`<code>${escape(code)}</code>`));
   value = value.replace(/\\\((.+?)\\\)/g, (_, tex) => hold(math(tex)));
-  // An unescaped single-dollar pair is accepted for common model output.
-  value = value.replace(/(^|[^\\])\$([^$\n]+?)\$/g, (_, prefix, tex) => prefix + hold(math(tex)));
+  // Accept common model $...$ output while leaving currency such as "$20 and $30" literal.
+  value = value.replace(/(?<![\\\w])\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g, (_, tex) => hold(math(tex)));
   value = escape(value).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\\\$/g, '$');
   return value.replace(/\uE000(\d+)\uE001/g, (_, index) => saved[Number(index)]);
 }

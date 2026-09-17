@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sourceUnits, batches, validatePlan, reconcileContinuations, makeGraph, paragraphParts, verifiedSourceQuote, validateDescriptions, attachDescriptions, graphUsable, importedGraphUsable, activeGraph, locateSelection, rankParagraphs, graphEvidence, graphContext, graphMarkdown, graphIndex } from '../src/graph.mjs';
-import { buildGraph, prepareConversation } from '../src/graph-runtime.mjs';
+import { buildGraph, buildImportedSummaryGraph, prepareConversation } from '../src/graph-runtime.mjs';
+import { makeImportedSummarySkeleton, boundedSummaryMaterial } from '../src/summary-graph.mjs';
 import { makeThread, conversationRequest } from '../src/core.mjs';
 import { PaperStore } from '../src/runtime.mjs';
 
@@ -253,15 +254,65 @@ test('imported summary graph stays separate from PDF graph and is explicitly sec
   assert.equal(importedGraphUsable(paper), true);
   assert.equal(activeGraph(paper).kind, 'imported');
   const thread = makeThread(paper, 'We adjust for the confounder');
-  const request = await prepareConversation(mockWin([{ paragraphIds: ['p2'], chapterIds: [] }]), config, paper, thread, '为何调整？', '', new AbortController().signal);
+  const sent = [];
+  const request = await prepareConversation(mockWin([], sent), config, paper, thread, '为何调整？', '', new AbortController().signal);
+  assert.equal(sent.length, 0, 'imported graph routing is local and consumes no extra model call');
   const context = JSON.parse(request.messages[1].content.split('\n').slice(1).join('\n'));
   assert.equal(context.knowledgeGraph.sourceKind, 'imported-summary');
   assert.match(context.secondaryMaterial, /不是论文原文证据/);
   assert.match(context.originalEvidence, /exchangeability/);
   assert.match(request.evidenceLabel, /AI 精炼稿图谱/);
+  assert.match(request.evidenceLabel, /0 次路由调用/);
   const markdown = graphMarkdown(importedGraph);
   assert.match(markdown, /外部 AI 精炼稿树状知识图谱/);
   assert.match(markdown, /二手凝练材料/);
   paper.activeGraphSource = 'pdf';
   assert.equal(activeGraph(paper).graph, pdfGraph);
+});
+
+test('imported summary fast path builds complete local structure and uses exactly one API call', async () => {
+  const summaryText = `# A Study\n\n## 1. 研究问题与贡献\n${'研究问题、缺口与贡献。'.repeat(45)}\n\n## 2. 方法与实验\n### 2.1 数据\n${'样本、变量、模型和评价指标。'.repeat(55)}\n\n## 3. 结果与局限\n${'结果、证据强度、限定条件与局限。'.repeat(50)}`;
+  const skeleton = makeImportedSummarySkeleton(summaryText, 'summary.md');
+  assert.equal(skeleton.paragraphs.map(p => summaryText.slice(p.start, p.end)).join(''), summaryText);
+  assert.ok(skeleton.chapters.some(c => /研究问题/.test(c.title)));
+  assert.ok(skeleton.chapters.some(c => /方法/.test(c.title)));
+  assert.ok(skeleton.paragraphs.length < 20);
+  const parts = paragraphParts(skeleton, summaryText);
+  const reply = { narrative: '问题引出方法，方法支持结果，并由局限限定。',
+    chapters: skeleton.chapters.map(c => ({ id: c.id, summary: `${c.title} 的导航摘要。` })),
+    nodes: parts.map(part => ({ id: part.id, importance: 'medium', density: 'medium', reason: '快速导航单元。', summary: `节点 ${part.id} 的凝练。`, keyQuotes: [], relations: [], terms: [] })),
+    chapterRelations: [] };
+  const sent = [];
+  const paper = { id: '1-A', title: 'Fixture', importedSummary: { name: 'summary.md', text: summaryText, charCount: summaryText.length } };
+  const graph = await buildImportedSummaryGraph(mockWin([reply], sent), config, paper, new AbortController().signal);
+  assert.equal(sent.length, 1);
+  assert.equal(graph.buildMode, 'summary-fast-ai');
+  assert.equal(graph.enrichmentStatus, 'ai-complete');
+  assert.equal(graph.aiCalls, 1);
+  assert.match(graph.narrative, /问题引出方法/);
+  assert.deepEqual(paper.importedGraph, undefined, 'builder remains side-effect free');
+});
+
+test('fast summary graph bounds very long API material and never retries malformed output', async () => {
+  const longSummary = `# Long\n\n## Methods\n${'A'.repeat(90000)}\n\n## Results\n${'B'.repeat(90000)}`;
+  const skeleton = makeImportedSummarySkeleton(longSummary, 'long.txt');
+  const material = boundedSummaryMaterial(skeleton, longSummary);
+  assert.equal(material.sampled, true);
+  assert.ok(material.text.length <= 42000);
+  assert.equal(skeleton.paragraphs.map(p => longSummary.slice(p.start, p.end)).join(''), longSummary);
+  const sent = [];
+  const graph = await buildImportedSummaryGraph(mockWin(['not json'], sent), config,
+    { title: 'Long', importedSummary: { name: 'long.txt', text: longSummary } }, new AbortController().signal);
+  assert.equal(sent.length, 1);
+  assert.equal(graph.enrichmentStatus, 'local-fallback');
+  assert.equal(graph.buildMode, 'summary-fast-local');
+  assert.match(graph.boundaryNote, /没有自动重试|零额外请求/);
+  assert.ok(graph.paragraphs.every(p => p.summary));
+  const denseHeadings = Array.from({ length: 600 }, (_, i) => `## ${i + 1}. Section ${i + 1}\n内容 ${i + 1}：方法、结果和局限。`).join('\n\n');
+  const denseGraph = makeImportedSummarySkeleton(denseHeadings, 'dense.md');
+  const bounded = boundedSummaryMaterial(denseGraph, denseHeadings);
+  assert.ok(denseGraph.paragraphs.length >= 500, 'local graph keeps dense source structure');
+  assert.ok(bounded.paragraphIds.length <= 48);
+  assert.ok(bounded.omittedNodes > 0);
+  assert.ok(bounded.text.length <= 42000);
 });
