@@ -185,7 +185,7 @@
 ## 开发
 
 ```powershell
-cd D:\projects\Claude_Code\Paper_assistant\paper-assistant-next
+cd paper-assistant-next
 npm test
 npm run build
 npm run check:zotero

@@ -1,5 +1,14 @@
 node_modules/
 dist/
 .env
+.env.*
 *.log
 .DS_Store
+api.txt
+PaperAssistantCache/
+.signing/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
