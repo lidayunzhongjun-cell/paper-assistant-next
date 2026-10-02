@@ -5,7 +5,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
-import { validateManifest } from './validate-manifest.mjs';
+import { validateManifest, supportsZoteroVersion } from './validate-manifest.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const own = createRequire(path.join(root, 'package.json'));
@@ -50,6 +50,11 @@ const xpi = zipEntries(xpiPath, ['manifest.json']);
 assert.ok(xpi['manifest.json'], 'XPI integrity check failed');
 const manifest = JSON.parse(readEntry(xpi, 'manifest.json'));
 validateManifest(manifest, pkg.version);
+const applicationIni = path.join(path.dirname(omniPath), 'app', 'application.ini');
+const installedVersion = /^Version=(.+)$/m.exec(readFileSync(applicationIni, 'utf8'))?.[1]?.trim();
+assert.ok(installedVersion, `Cannot read Zotero version from ${applicationIni}`);
+assert.ok(supportsZoteroVersion(manifest, installedVersion),
+  `Packaged manifest supports ${manifest.applications.zotero.strict_min_version}–${manifest.applications.zotero.strict_max_version}, not installed Zotero ${installedVersion}`);
 if (!localOnly) {
   const feed = JSON.parse(readFileSync(path.join(root, 'update.json'), 'utf8'));
   const release = feed.addons?.[manifest.applications.zotero.id]?.updates?.find(item => item.version === pkg.version);
@@ -70,6 +75,7 @@ console.log(`Regression control rejected by installed Zotero gate: ${oldErrors.j
 const errors = errorsFor(manifest);
 assert.deepEqual(errors, [], 'Packaged manifest rejected by installed Zotero gate');
 console.log(`PASS: ${xpiPath}`);
+console.log(`Compatibility range includes installed Zotero ${installedVersion}.`);
 console.log(localOnly ? 'Local test build: public update feed intentionally not changed or checked.' : 'PASS: update.json release URL and SHA-512 match the packaged XPI.');
 console.log(`Host source: ${omniPath} -> modules/Extension.sys.mjs`);
 console.log('Scope: actual Zotero-specific manifest gate only; NOT a real installation or UI acceptance test.');

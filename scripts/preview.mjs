@@ -25,12 +25,12 @@ const previewMathStyles = katexStyles
   .replace(/,url\(fonts\/[^)]+\.woff\) format\("woff"\),url\(fonts\/[^)]+\.ttf\) format\("truetype"\)/g, '');
 export const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Next 精读工作台 · 静态设计预览</title><style>${styles}\n${previewMathStyles}</style><body>${SHELL}<script>
 document.getElementById('paper-title').textContent='因果推断入门 · 教学示例';
-document.getElementById('sessions').innerHTML='<button class="session">全文导读与问答<span class="small">1 条回答</span></button><button class="session active">Why association is not causation<span class="small">3 条回答 · 已锁定原文</span></button>';
+document.getElementById('sessions').innerHTML='<div class="session-row"><button class="session">全文导读与问答<span class="small">1 条回答</span></button><button class="session-delete">删除</button></div><div class="session-row"><button class="session active">Why association is not causation<span class="small">3 条回答 · 已锁定原文</span></button><button class="session-delete">删除</button></div>';
 document.getElementById('thread-picker').innerHTML='<option>关联与因果：选段精读</option>';
+document.getElementById('graph-source').innerHTML='<option>PDF 原文图谱</option>';
 document.getElementById('source-text').textContent='Association in observational data may arise from common causes. Identifying intervention effects therefore requires additional assumptions.';
 document.getElementById('messages').innerHTML=${JSON.stringify(`<article class="message"><div class="message-meta">你 · 10:24</div><div class="question">这段在讲什么？在全文中起什么作用？</div></article><article class="message"><div class="message-meta">精读助手 · 10:24 · ★ 已收藏</div><div class="answer">${answerHTML(sample)}<div class="message-actions"><button>引用追问</button><button>★ 已收藏</button><button>复制回答</button></div></div></article><article class="message"><div class="message-meta">你 · 10:25</div><div class="question">能用一个生活例子解释“共同原因”吗？</div></article><article class="message"><div class="message-meta">精读助手 · 10:25</div><div class="answer">${answerHTML('## 直接回答\n教学例子：夏天冰淇淋销量和游泳人数一起上升，**气温**可能是共同原因。不能因此推出买冰淇淋会让人去游泳。\n## 为什么\n气温分别影响购买行为和游泳行为。这个例子只说明混杂机制，并不证明某个具体数据集里有因果关系。')}</div></article>`)};
 document.getElementById('status').textContent='静态设计预览 · 示例非真实模型输出 · 不连接 API';
 document.getElementById('focus').onclick=()=>document.body.classList.toggle('focus-mode');
 document.getElementById('font').onclick=()=>document.getElementById('messages').classList.toggle('read-size');
-document.querySelectorAll('button').forEach(b=>{if(!['focus','font'].includes(b.id))b.disabled=true});
 </script></body></html>`;

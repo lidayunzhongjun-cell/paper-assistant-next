@@ -25,3 +25,26 @@ export function validateManifest(manifest, expectedVersion) {
     throw new Error('Next must not overwrite the original plugin ID');
   }
 }
+
+// Zotero's strict_min/max_version are inclusive. This covers the numeric
+// release ranges used by this project (for example 9.0 through 10.0.*).
+export function supportsZoteroVersion(manifest, version) {
+  const parts = value => {
+    const match = /^(\d+(?:\.\d+)*)(\.\*)?$/.exec(value);
+    if (!match) throw new Error(`Unsupported Zotero version range: ${value}`);
+    return { numbers: match[1].split('.').map(Number), wildcard: Boolean(match[2]) };
+  };
+  const compare = (left, right) => {
+    for (let i = 0; i < Math.max(left.length, right.length); i++) {
+      const difference = (left[i] || 0) - (right[i] || 0);
+      if (difference) return Math.sign(difference);
+    }
+    return 0;
+  };
+  const actual = parts(version).numbers;
+  const minimum = parts(manifest.applications.zotero.strict_min_version);
+  const maximum = parts(manifest.applications.zotero.strict_max_version);
+  if (minimum.wildcard) throw new Error('strict_min_version cannot contain *');
+  return compare(actual, minimum.numbers) >= 0 &&
+    compare(maximum.wildcard ? actual.slice(0, maximum.numbers.length) : actual, maximum.numbers) <= 0;
+}

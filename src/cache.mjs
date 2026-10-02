@@ -30,6 +30,7 @@ export function paragraphCachePatch(paper, thread) {
   // Source bounds and structural edges remain usable for retrieving the original.
   graph.edges = graph.edges.filter(e => !e.inferred || (e.from !== id && e.to !== id && e.from !== p.chapterId && e.to !== p.chapterId));
   graph.terms = graph.terms.map(t => ({ ...t, paragraphIds: t.paragraphIds.filter(pid => pid !== id) })).filter(t => t.paragraphIds.length);
+  if (Array.isArray(graph.knowledge)) graph.knowledge = graph.knowledge.filter(item => !item.paragraphIds.includes(id));
   const chapter = graph.chapters.find(c => c.id === p.chapterId);
   chapter.summary = ''; chapter.summaryInvalidated = true;
   graph.narrative = ''; graph.narrativeInvalidated = true;

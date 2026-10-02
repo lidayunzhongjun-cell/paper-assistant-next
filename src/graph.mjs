@@ -1,3 +1,5 @@
+import { bm25Scores } from './local-index.mjs';
+
 // Source-grounded knowledge trees; offsets always refer to the unchanged extracted text.
 export const GRAPH_VERSION = 1;
 export const compact = text => String(text || '').replace(/\s+/g, ' ').trim();
@@ -230,12 +232,13 @@ export function activeGraph(paper) {
 }
 export function rankParagraphs(graph, query, located = []) {
   const tokens = [...new Set((query.toLowerCase().match(/[a-z][a-z0-9_-]{2,}|[\u4e00-\u9fff]/g) || []))].slice(0, 160);
+  const lexical = graph.localIndex ? bm25Scores(graph.localIndex, query) : [];
   const linked = new Set(graph.edges.filter(e => e.type !== '包含' && located.includes(e.from)).map(e => e.to));
   for (const e of graph.edges) if (e.type !== '包含' && located.includes(e.to)) linked.add(e.from);
-  return graph.paragraphs.map(p => {
+  return graph.paragraphs.map((p, i) => {
     const terms = graph.terms.filter(t => t.paragraphIds.includes(p.id)).map(t => t.name + ' ' + t.definition).join(' ');
     const hay = `${location(graph, p)} ${p.summary} ${terms}`.toLowerCase();
-    return { p, score: (located.includes(p.id) ? 10000 : 0) + (linked.has(p.id) ? 15 : 0) + tokens.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0) };
+    return { p, score: (located.includes(p.id) ? 10000 : 0) + (linked.has(p.id) ? 15 : 0) + (lexical[i] || 0) * 2 + tokens.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0) };
   }).sort((a, b) => b.score - a.score || a.p.start - b.p.start);
 }
 export function graphIndex(graph, ranked, limit = 10000) {
@@ -288,11 +291,22 @@ export function graphEvidence(paper, ranked, requested = [], located = [], limit
 }
 export function graphContext(graph, ids, limit = 5500) {
   const imported = graph.sourceKind === 'imported-summary';
-  const result = { sourceKind: graph.sourceKind || 'pdf', sourceName: graph.sourceName || 'PDF 提取文字', narrative: graph.narrative.slice(0, 1800), nodes: [], relations: [], terms: [],
+  const localPdf = graph.buildMode === 'pdf-local-v1';
+  if (localPdf) limit = Math.max(limit, 7500);
+  const result = { sourceKind: graph.sourceKind || 'pdf', sourceName: graph.sourceName || 'PDF 提取文字', narrative: graph.narrative.slice(0, 1800), knowledge: [], chapters: [], nodes: [], relations: [], terms: [],
     note: imported ? '图谱和片段来自外部 AI 精炼稿，是二手材料；不得把它当作论文原文证据，重要结论须结合提供的 PDF 原文检索片段核对。'
-      : '图谱为模型凝练和关系推断，原文才是证据；本轮仅传入相关图谱和原文区域，完整原文保留在本地。' };
+      : localPdf ? '本地图谱完整索引 PDF 提取文字，但抽取句、关键词、共词和引用仅是候选线索；AI 语义骨架仅来自已标注的代表片段。回答必须依据本轮提供的 PDF 原文片段，不得把未发送部分说成已核对。'
+        : '图谱为模型凝练和关系推断，原文才是证据；本轮仅传入相关图谱和原文区域，完整原文保留在本地。' };
   const add = (list, item) => { list.push(item); if (JSON.stringify(result).length > limit) list.pop(); };
+  if (localPdf) {
+    for (const item of graph.knowledge || []) if (!item.paragraphIds.some(id => graph.paragraphs.find(p => p.id === id)?.cacheCleared)) add(result.knowledge, item);
+  }
   for (const id of ids) { const p = graph.paragraphs.find(p => p.id === id); if (p) add(result.nodes, { id, path: location(graph, p), summary: p.cacheCleared ? '精读缓存已清除，须依据原文分析。' : p.summary.slice(0, 700), importance: p.importance, density: p.density }); }
+  if (localPdf) {
+    const focused = new Set(graph.paragraphs.filter(p => ids.includes(p.id)).map(p => p.chapterId));
+    for (const c of [...graph.chapters.filter(c => focused.has(c.id)), ...graph.chapters.filter(c => !focused.has(c.id))])
+      add(result.chapters, { id: c.id, title: c.title, summary: c.summaryInvalidated ? '' : c.summary.slice(0, focused.has(c.id) ? 300 : 80) });
+  }
   for (const t of graph.terms.filter(t => t.paragraphIds.some(id => ids.includes(id)))) add(result.terms, t);
   for (const e of graph.edges.filter(e => e.type !== '包含' && (ids.includes(e.from) || ids.includes(e.to)))) add(result.relations, e);
   return result;
@@ -301,6 +315,11 @@ export function graphMarkdown(graph) {
   const level = { high: '高', medium: '中', low: '低' };
   const imported = graph.sourceKind === 'imported-summary';
   let out = `# ${imported ? '外部 AI 精炼稿' : 'PDF 全文'}树状知识图谱\n\n来源：${graph.sourceName || (imported ? '外部 AI 精炼稿' : 'PDF 提取文字')}\n\n${imported ? '**证据边界：这是二手凝练材料，不是论文原文；重要结论、关系与摘录须回到 PDF 核对。**\n\n' : ''}${graph.boundaryNote}\n\n## 全文串联\n${graph.narrativeInvalidated ? '部分段落缓存已清除，全文串联已失效，需重新建立图谱。' : graph.narrative}\n`;
+  if (graph.buildMode === 'pdf-local-v1') {
+    out += `\n## 建图状态\n${graph.enrichmentStatus === 'ai-enhanced' ? '本地全文索引 + 一次 AI 语义增强' : '仅本地全文索引，AI 语义增强尚未采用'}\n`;
+    for (const item of graph.knowledge || []) out += `\n### ${item.role}\n${item.text} [${item.paragraphIds.join(', ')}]\n`;
+    out += `\n本地关键词（检索线索）：${(graph.localIndex?.keywords || []).slice(0, 30).join('、')}\n`;
+  }
   for (const c of graph.chapters) {
     out += `\n## ${c.title} [${c.id}]\n${c.summaryInvalidated ? '章节串联已失效，其他段落缓存保留。' : c.summary}\n`;
     for (const child of c.children) {

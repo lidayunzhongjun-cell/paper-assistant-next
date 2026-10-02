@@ -1,10 +1,10 @@
 {
   "name": "paper-assistant-next",
-  "version": "2.3.1",
+  "version": "2.3.5",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-or-later",
-  "description": "Zotero 9 AI 论文精读助手：PDF 与 AI 精炼稿双图谱、LaTeX 公式排版、选段解释和连续追问。",
+  "description": "Zotero 9/10 AI 论文精读助手：PDF 与 AI 精炼稿双图谱、LaTeX 公式排版、选段解释和连续追问。",
   "author": "lidayunzhongjun-cell",
   "repository": {
     "type": "git",

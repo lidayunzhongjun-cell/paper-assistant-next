@@ -176,17 +176,18 @@ export async function prepareConversation(win, config, paper, thread, question, 
   if (!active) return conversationRequest(paper, thread, question, quote);
   const { graph, text: graphText, kind } = active;
   const imported = kind === 'imported';
+  const localRoute = imported || graph.buildMode === 'pdf-local-v1';
   const located = locateSelection(graph, graphText, thread.selection, thread.sourceKind === graph.sourceKind ? thread.paragraphId : null);
   const history = thread.messages.filter(m => m.status === 'done').slice(-4).map(m => `${m.role}: ${m.content.slice(0, 650)}`).join('\n');
   const query = `${question}\n${quote}\n${thread.selection}\n${history}`;
   const ranked = rankParagraphs(graph, query, located);
-  const index = graphIndex(graph, ranked);
-  progress(imported ? '正在本机检索 AI 精炼稿图谱并准备回查 PDF 原文（不调用路由模型）…' : '根据全文图谱预判相关章节与原文区域…');
-  let requested = [], routeNote = imported ? '本地图谱关键词与关系检索（0 次路由调用）' : '图谱预判';
-  if (imported) {
+  progress(localRoute ? '正在本机检索全文索引并定位相关原文（不调用路由模型）…' : '根据全文图谱预判相关章节与原文区域…');
+  let requested = [], routeNote = localRoute ? '本地 BM25、结构与关系检索（0 次路由调用）' : '图谱预判';
+  if (localRoute) {
     requested = ranked.slice(0, 6).map(item => item.p.id);
   } else {
     try {
+      const index = graphIndex(graph, ranked);
       const route = parseJSON(await callModel(win, config, [
         { role: 'system', content: UNTRUSTED + '你只做原文检索规划，不回答问题。根据全文图谱、选段所在位置和追问，选择需要串读的章节和段落，优先包含定义、方法、实验和限制的相关证据。候选段落并非完整目录，必要时选章节ID以搜索该章。返回严格 JSON {"paragraphIds":["p1"],"chapterIds":["c2"]}，最多6段、3章，只用提供的ID。' },
         { role: 'user', content: `${index.text}\n已匹配位置：${located.join(', ') || '未精确定位'}\n选段：${thread.selection.slice(0, 2500)}\n历史：${history}\n引用：${quote.slice(0, 1500)}\n问题：${question}` }

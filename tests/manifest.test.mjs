@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { validateManifest } from '../scripts/validate-manifest.mjs';
+import { validateManifest, supportsZoteroVersion } from '../scripts/validate-manifest.mjs';
 
 const manifest = JSON.parse(readFileSync(new URL('../addon/manifest.json', import.meta.url), 'utf8'));
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -37,4 +37,13 @@ test('Next stays separate from original and rejects wildcard minimum versions', 
   broken.applications.zotero.id = manifest.applications.zotero.id;
   broken.applications.zotero.strict_min_version = '9.*';
   assert.throws(() => validateManifest(broken), /cannot contain/);
+});
+
+test('Zotero 10.0.3 is included and the former 9.* ceiling is rejected', () => {
+  assert.equal(supportsZoteroVersion(manifest, '9.0'), true);
+  assert.equal(supportsZoteroVersion(manifest, '10.0.3'), true);
+  assert.equal(supportsZoteroVersion(manifest, '10.1.0'), false);
+  const old = structuredClone(manifest);
+  old.applications.zotero.strict_max_version = '9.*';
+  assert.equal(supportsZoteroVersion(old, '10.0.3'), false);
 });
